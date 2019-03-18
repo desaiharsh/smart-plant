@@ -106,7 +106,9 @@ float get_co2();
 
 // Functions to interface sensors
 
-void i2c_init(uint8_t addr);
-void i2c_send(uint8_t addr);
-void i2c_receive(uint8_t addr);
+bool i2c_init(uint8_t addr);
+bool i2c_send8(uint8_t addr, uint8_t data);
+bool i2c_send16(uint8_t addr, uint16_t data);
+uint8_t i2c_receive8(uint8_t addr);
+uint16_t i2c_receive16(uint8_t addr);
 

@@ -1,5 +1,10 @@
 #include "sensor-interface.h"
 
+volatile unsigned char TXByteBuffer[2];
+volatile unsigned char TXByteCtr;
+volatile unsigned char RXByteBuffer[2];
+volatile unsigned char RXByteCtr;
+
 // Functions to be used by every sensor node.
 
 // MCP9808 Functions
@@ -108,8 +113,134 @@ float get_co2();
 
 // Functions to interface sensors
 
-void i2c_init(uint8_t addr);
-void i2c_send(uint8_t addr);
-void i2c_receive(uint8_t addr);
+void i2c_init(){
+
+    // Configure GPIO
+    P7SEL0 |= BIT0 | BIT1;
+    P7SEL1 &= ~(BIT0 | BIT1);
+    PM5CTL0 &= ~LOCKLPM5;
+
+    // Configure USCI_B2 for I2C mode
+    UCB2CTLW0 = UCSWRST;                    // put eUSCI_B in reset state
+    UCB2CTLW0 |= UCMODE_3 | UCMST | UCSSEL__SMCLK; // I2C master mode, SMCLK
+    UCB2BRW = 128;                          // baudrate = SMCLK(16MHz) / 128 = 125kHz
+    UCB2CTLW0 &= ~UCSWRST;                  // clear reset register
+    UCB2IE |= UCRXIE0 | UCTXIE0 | UCNACKIE;           // recieve, transmit and NACK interrupt enable
+
+}
+
+bool i2c_send8(uint8_t addr, uint8_t data){
+
+	UCB2I2CSA = addr;// configure slave address
+
+	TXByteCtr = 1;
+	TXByteBuffer[0] = data;
+
+	while (UCB2CTLW0 & UCTXSTP);        // Ensure stop condition got sent
+
+        UCB2CTLW0 |= UCTR | UCTXSTT;        // I2C TX, start condition
+
+        __bis_SR_register(LPM0_bits | GIE); // Enter LPM0 w/ interrupts
+                                            // Remain in LPM0 until all data
+                                            // is TX'd
+	return true;
+}
+
+bool i2c_send16(uint8_t addr, uint16_t data){
+
+	UCB2I2CSA = addr;// configure slave address
+
+	TXByteCtr = 1;
+	TXByteBuffer[0] = data & 0xFF;
+	TXByteBuffer[1] = data >> 8;
+
+	while (UCB2CTLW0 & UCTXSTP);        // Ensure stop condition got sent
+
+        UCB2CTLW0 |= UCTR | UCTXSTT;        // I2C TX, start condition
+
+        __bis_SR_register(LPM0_bits | GIE); // Enter LPM0 w/ interrupts
+                                            // Remain in LPM0 until all data
+                                            // is TX'd
+	return true;
+}
+
+uint8_t i2c_receive8(uint8_t addr){
+
+	UCB2I2CSA = addr;// configure slave address
+	RXByteCtr = 1;
+
+	while (UCB2CTL1 & UCTXSTP);         // Ensure stop condition got sent
+        
+	UCB2CTL1 |= UCTXSTT;                // I2C start condition
+
+        __bis_SR_register(LPM0_bits | GIE); // Enter LPM0 w/ interrupt
+
+	return RXByteBuffer[0];
+
+}
+
+uint16_t i2c_receive16(uint8_t addr){
+
+	UCB2I2CSA = addr;// configure slave address
+	RXByteCtr = 2;
+
+	while (UCB2CTL1 & UCTXSTP);         // Ensure stop condition got sent
+        
+	UCB2CTL1 |= UCTXSTT;                // I2C start condition
+
+        __bis_SR_register(LPM0_bits | GIE); // Enter LPM0 w/ interrupt
+
+	return ( ((RXByteBuffer[1] << 8) & 0xFF00) | (RXByteBuffer[1]));
+
+}
 
 
+void __attribute__ ((interrupt(EUSCI_B2_VECTOR))) USCI_B2_ISR (void)
+{
+    switch(__even_in_range(UCB2IV, USCI_I2C_UCBIT9IFG))
+    {
+        case USCI_NONE:          break;     // Vector 0: No interrupts
+        case USCI_I2C_UCALIFG:   break;     // Vector 2: ALIFG
+        case USCI_I2C_UCNACKIFG:            // Vector 4: NACKIFG
+            UCB2CTLW0 |= UCTXSTT;           // resend start if NACK
+            break;
+        case USCI_I2C_UCSTTIFG:  break;     // Vector 6: STTIFG
+        case USCI_I2C_UCSTPIFG:  break;     // Vector 8: STPIFG
+        case USCI_I2C_UCRXIFG3:  break;     // Vector 10: RXIFG3
+        case USCI_I2C_UCTXIFG3:  break;     // Vector 12: TXIFG3
+        case USCI_I2C_UCRXIFG2:  break;     // Vector 14: RXIFG2
+        case USCI_I2C_UCTXIFG2:  break;     // Vector 16: TXIFG2
+        case USCI_I2C_UCRXIFG1:  break;     // Vector 18: RXIFG1
+        case USCI_I2C_UCTXIFG1:  break;     // Vector 20: TXIFG1
+        case USCI_I2C_UCRXIFG0: 	    // Vector 22: RXIFG0
+            if (--RXByteCtr)                  // Check RX byte counter
+            { 
+                RXByteBuffer[RXByteCtr] = UCB2RXBUF;             // Get RX data
+            }
+            else
+            {
+                RXByteBuffer[RXByteCtr] = UCB2RXBUF;             // Get RX data
+                UCB2CTLW0 |= UCTXSTP;       // I2C stop condition
+                UCB2IFG &= ~UCRXIFG0;        // Clear USCI_B2 TX int flag
+                __bic_SR_register_on_exit(LPM0_bits); // Exit LPM0
+            }
+		break;    
+	case USCI_I2C_UCTXIFG0:             // Vector 24: TXIFG0
+            if (TXByteCtr)                  // Check TX byte counter
+            {
+                TXByteCtr--;                // Decrement TX byte counter
+                UCB2TXBUF = TXByteBuffer[TXByteCtr];  // Load TX buffer
+            }
+            else
+            {
+                UCB2CTLW0 |= UCTXSTP;       // I2C stop condition
+                UCB2IFG &= ~UCTXIFG0;        // Clear USCI_B2 TX int flag
+                __bic_SR_register_on_exit(LPM0_bits); // Exit LPM0
+            }
+            break;
+        case USCI_I2C_UCBCNTIFG: break;     // Vector 26: BCNTIFG
+        case USCI_I2C_UCCLTOIFG: break;     // Vector 28: clock low timeout
+        case USCI_I2C_UCBIT9IFG: break;     // Vector 30: 9th bit
+        default: break;
+    }
+}

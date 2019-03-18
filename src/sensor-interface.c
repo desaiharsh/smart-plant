@@ -23,7 +23,7 @@ bool mcp9808_init(){
 }
 
 float get_air_temp(){
-	uint16_t t = read16(MCP9808_REG_AMBIENT_TEMP);
+/*	uint16_t t = read16(MCP9808_REG_AMBIENT_TEMP);
 
 	float temp = t & 0x0FFF;
 	temp /= 16.0;
@@ -31,13 +31,14 @@ float get_air_temp(){
 		temp -= 256;
 
 	return temp;
+	*/
 }
 
 // Si7021 Functions
 
 bool si7021_init(){
   // reset -- was a separate function in the library
-  Wire.beginTransmission(_i2caddr);
+/*  Wire.beginTransmission(_i2caddr);
   Wire.write(SI7021_RESET_CMD);
   Wire.endTransmission();
   delay(50);
@@ -50,11 +51,11 @@ bool si7021_init(){
   _readRevision();
 
   return true;
-
+*/
 }
 
 float get_soil_temp(){
-	Wire.beginTransmission(_i2caddr);
+/*	Wire.beginTransmission(_i2caddr);
 	Wire.write(SI7021_MEASTEMP_NOHOLD_CMD);
 	uint8_t err = Wire.endTransmission();
 
@@ -77,10 +78,12 @@ float get_soil_temp(){
   	}
 
 	return NAN; // Error timeout
+	*/
 }
 
 float get_humidity(){
-	Wire.beginTransmission(_i2caddr);
+	
+	/*Wire.beginTransmission(_i2caddr);
 	
 	Wire.write(SI7021_MEASRH_NOHOLD_CMD);
 	uint8_t err = Wire.endTransmission();
@@ -103,6 +106,7 @@ float get_humidity(){
 		delay(6); // 1/2 typical sample processing time
 		}
 		return NAN; // Error timeout
+		*/
 }
 
 // ALS-PT19 Functions
@@ -111,7 +115,7 @@ float get_light();
 // CCS811 Functions
 float get_co2();
 
-// Functions to interface sensors
+// I2C Functions to interface sensors
 
 void i2c_init(){
 

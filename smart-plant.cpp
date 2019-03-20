@@ -1,5 +1,7 @@
 #include "sensor-interface.h"
-
+/*
+* Authors : Harsh Desai, Jaidev Singh Chadha, Varsha Prasad Narsing
+*/
 volatile unsigned char TXByteBuffer[2];
 volatile unsigned char TXByteCtr;
 volatile unsigned char RXByteBuffer[2];

@@ -94,7 +94,7 @@ float get_air_temp();
 
 // Si7021 Functions
 
-bool si7021_init();
+float si7021_init();
 float get_soil_temp();
 float get_humidity();
 

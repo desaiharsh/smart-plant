@@ -9,10 +9,13 @@ volatile unsigned char RXByteCtr;
 
 // MCP9808 Functions
 
-uint16_t mcp9808_init() {
-	uint16_t temp;
+uint8_t mcp9808_init() {
+	uint8_t temp;
 	//i2c_send8(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_DEVICE_ID);
 	//temp = i2c_receive16(MCP9808_I2CADDR_DEFAULT);
+
+	i2c_send8(CCS811_ADDRESS, 0x20);
+	temp = i2c_receive8(CCS811_ADDRESS);
 	/*if (read16(MCP9808_REG_MANUF_ID) != 0x0054)
 		return false;
 	if (read16(MCP9808_REG_DEVICE_ID) != 0x0400)
@@ -25,6 +28,32 @@ uint16_t mcp9808_init() {
 	return temp;
 }
 
+
+/*
+bool check_mcp9808_init() {
+	uint16_t temp;
+	//i2c_send8(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_DEVICE_ID);
+	//temp = i2c_receive16(MCP9808_I2CADDR_DEFAULT);
+
+	i2c_send8(CCS811_ADDRESS, CCS811_HW_ID);
+	temp = i2c_receive16(CCS811_ADDRESS);
+
+	if (temp != CCS811_HW_ID_CODE) {
+		return false;
+	}
+	else return true;
+	/*if (read16(MCP9808_REG_MANUF_ID) != 0x0054)
+		return false;
+	if (read16(MCP9808_REG_DEVICE_ID) != 0x0400)
+		return false;
+
+	write16(MCP9808_REG_CONFIG, 0x0);
+
+	// Add code here to set resolution
+
+	//return temp;
+}
+*/
 float si7021_init() {
 	uint16_t humdity;
 	humdity = read16(SI7021_DEFAULT_ADDRESS, SI7021_MEASRH_NOHOLD_CMD);
@@ -229,7 +258,73 @@ float get_humidity() {
 float get_light();
 
 // CCS811 Functions
-float get_co2();
+
+uint8_t ccs811_init() {
+	uint8_t temp;
+	uint8_t temp2;
+	//i2c_send8(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_DEVICE_ID);
+	//temp = i2c_receive16(MCP9808_I2CADDR_DEFAULT);
+
+	//i2c_send8(CCS811_ADDRESS, CCS811_MEAS_MODE);
+	temp = read8(CCS811_ADDRESS, CCS811_MEAS_MODE);
+
+	/*if (read16(MCP9808_REG_MANUF_ID) != 0x0054)
+		return false;
+	if (read16(MCP9808_REG_DEVICE_ID) != 0x0400)
+		return false;
+
+	write16(MCP9808_REG_CONFIG, 0x0);*/
+
+	// Add code here to set resolution
+	write8(CCS811_ADDRESS, CCS811_MEAS_MODE, (temp | 0x10));
+	//i2c_send8(CCS811_ADDRESS, CCS811_MEAS_MODE);
+
+
+	return temp;
+}
+
+uint16_t get_co2() {
+	uint16_t eCO2;
+	eCO2 = read16((uint8_t)CCS811_ADDRESS, (uint8_t)CCS811_ALG_RESULT_DATA);
+	uint16_t temp1;
+	uint16_t temp2;
+	temp1 = eCO2 & 0x00FF;
+	temp2 = eCO2 & 0xFF00;
+	temp1 = temp1 << 8;
+	temp2 = temp2 >> 8;
+
+	return temp1 | temp2;
+}
+
+//UART
+
+void uart_init(void)
+{
+	// Configure GPIO
+	P6SEL1 &= ~(BIT0 | BIT1);
+	P6SEL0 |= (BIT0 | BIT1);				// USCI_A3 UART operation
+
+	P6DIR |= BIT0;
+	P6DIR &= ~BIT1;
+
+	// Configure USCI_A3 for UART mode
+	UCA3CTLW0 = UCSWRST;                    // Put eUSCI in reset
+	UCA3CTLW0 |= UCSSEL__SMCLK;             // CLK = SMCLK
+	UCA3BRW = 104;                           // 16000000/9600
+	UCA3MCTLW |= UCOS16 | UCBRF_2 | 0xD600;
+	UCA3CTLW0 &= ~UCSWRST;                  // Initialize eUSCI
+
+}
+
+void uart_write(uint8_t data) {
+	UCA3TXBUF = data;
+	while (!(UCA3IFG&UCTXIFG));
+}
+
+uint8_t uart_read() {
+	return UCA3RXBUF;
+}
+
 
 // I2C Functions to interface sensors
 
@@ -400,3 +495,5 @@ void __attribute__((interrupt(EUSCI_B2_VECTOR))) USCI_B2_ISR(void)
 	default: break;
 	}
 }
+
+

@@ -68,6 +68,55 @@
 
 // CCS811 Carbon Dioxide Level Sensor
 
+/*=========================================================================
+	I2C ADDRESS/BITS
+	-----------------------------------------------------------------------*/
+#define CCS811_ADDRESS                (0x5A)
+	/*=========================================================================*/
+
+	/*=========================================================================
+		REGISTERS
+		-----------------------------------------------------------------------*/
+
+#define CCS811_STATUS 0x00
+#define CCS811_MEAS_MODE 0x01
+
+#define CCS811_ALG_RESULT_DATA 0x02
+
+#define CCS811_RAW_DATA 0x03
+#define CCS811_ENV_DATA 0x05
+#define CCS811_NTC 0x06
+#define CCS811_THRESHOLDS 0x10
+#define CCS811_BASELINE 0x11
+#define CCS811_HW_ID 0x20
+#define CCS811_HW_VERSION 0x21
+#define CCS811_FW_BOOT_VERSION 0x23
+#define CCS811_FW_APP_VERSION 0x24
+#define CCS811_ERROR_ID 0xE0
+#define CCS811_SW_RESET 0xFF
+
+
+		//bootloader registers
+
+#define CCS811_BOOTLOADER_APP_ERASE 0xF1
+#define CCS811_BOOTLOADER_APP_DATA 0xF2
+#define CCS811_BOOTLOADER_APP_VERIFY 0xF3
+#define CCS811_BOOTLOADER_APP_START 0xF4
+
+
+
+#define CCS811_DRIVE_MODE_IDLE 0x00
+#define CCS811_DRIVE_MODE_1SEC 0x01
+#define CCS811_DRIVE_MODE_10SEC 0x02
+#define CCS811_DRIVE_MODE_60SEC 0x03
+#define CCS811_DRIVE_MODE_250MS 0x04
+
+/*=========================================================================*/
+
+#define CCS811_HW_ID_CODE			0x81
+
+#define CCS811_REF_RESISTOR			100000
+
 
 // Struct defining a sensor and it's values.
 
@@ -85,7 +134,8 @@
 
 // MCP9808 Functions
 
-uint16_t mcp9808_init();
+uint8_t mcp9808_init();
+bool check_mcp9808_init();
 float get_air_temp();
 // void shutdown_wake(boolean sw);
 // void shutdown();
@@ -103,8 +153,14 @@ float get_humidity();
 float get_light();
 
 // CCS811 Functions
+uint8_t ccs811_init();
 
-float get_co2();
+uint16_t get_co2();
+
+//UART
+void uart_init();
+void uart_write(uint8_t data);
+uint8_t uart_read();
 
 // Functions to interface sensors
 

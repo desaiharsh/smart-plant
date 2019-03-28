@@ -57,11 +57,20 @@ bool check_mcp9808_init() {
 float si7021_init() {
 	uint16_t humdity;
 	humdity = read16(SI7021_DEFAULT_ADDRESS, SI7021_MEASRH_NOHOLD_CMD);
-	float humidity = humdity;
-	humidity *= 125;
-	humidity /= 65536;
-	humidity -= 6;
+	
+	uint16_t temp1;
+	uint16_t temp2;
+	temp1 = humdity & 0x00FF;
+	temp2 = humdity & 0xFF00;
+	temp1 = temp1 << 8;
+	temp2 = temp2 >> 8;
 
+	humdity = temp1 | temp2;
+
+	float humidity = (float)(humdity)/65536;
+	//humidity /= 65536;
+	humidity *= 125;
+	humidity -= 6;
 
 
 	return humidity;
@@ -72,8 +81,8 @@ float get_soil_temp() {
 	uint16_t temperature;
 	temperature = read16(SI7021_DEFAULT_ADDRESS, SI7021_READPREVTEMP_CMD);
 	float temp = temperature;
-	temp *= 175.72;
 	temp /= 65536;
+	temp *= 175.72;
 	temp -= 46.85;
 	return temp;
 }

@@ -1,9 +1,10 @@
 #include "sensor-interface.h"
 
-volatile unsigned char TXByteBuffer[2];
+volatile unsigned char TXByteBuffer[8];
 volatile unsigned char TXByteCtr;
-volatile unsigned char RXByteBuffer[2];
+volatile unsigned char RXByteBuffer[8];
 volatile unsigned char RXByteCtr;
+volatile uint16_t iflag, jflag;
 
 // Functions to be used by every sensor node.
 
@@ -29,38 +30,45 @@ uint8_t mcp9808_init() {
 }
 
 
-/*
-bool check_mcp9808_init() {
-	uint16_t temp;
-	//i2c_send8(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_DEVICE_ID);
-	//temp = i2c_receive16(MCP9808_I2CADDR_DEFAULT);
+float get_air_temp() {
+	uint16_t t = read16(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_AMBIENT_TEMP);
 
-	i2c_send8(CCS811_ADDRESS, CCS811_HW_ID);
-	temp = i2c_receive16(CCS811_ADDRESS);
+	float temp = t & 0x0FFF;
+	temp /= 16.0;
+	if (t & 0x1000)
+		temp -= 256;
 
-	if (temp != CCS811_HW_ID_CODE) {
-		return false;
-	}
-	else return true;
-	/*if (read16(MCP9808_REG_MANUF_ID) != 0x0054)
-		return false;
-	if (read16(MCP9808_REG_DEVICE_ID) != 0x0400)
-		return false;
+	return temp;
 
-	write16(MCP9808_REG_CONFIG, 0x0);
-
-	// Add code here to set resolution
-
-	//return temp;
 }
-*/
-float si7021_init() {
+
+// Si7021 Functions
+
+uint16_t get_humidity() {
 	uint16_t humdity;
-	humdity = read16(SI7021_DEFAULT_ADDRESS, SI7021_MEASRH_NOHOLD_CMD);
-	float humidity = humdity;
-	humidity *= 125;
-	humidity /= 65536;
-	humidity -= 6;
+	double humidity;
+	iflag = 0;
+	i2c_send8(SI7021_DEFAULT_ADDRESS, SI7021_MEASRH_NOHOLD_CMD);
+	
+	UCB2I2CSA = SI7021_DEFAULT_ADDRESS;// configure slave address
+	RXByteCtr = 2;
+
+	UCB2RXBUF = 0;
+	while (UCB2CTL1 & UCTXSTP);         // Ensure stop condition got sent
+
+	UCB2CTLW0 &= ~UCTR;	 		       // I2C RX
+	UCB2IE |= UCRXIE0;
+	UCB2CTL1 |= UCTXSTT;                // I2C start condition
+	
+	while( (!(UCB2IFG & UCRXIFG0)) && iflag < 20000){ iflag ++; };
+
+	humdity = (((RXByteBuffer[1] << 8) & 0xFF00) | (RXByteBuffer[0]));
+	//humdity = read16(SI7021_DEFAULT_ADDRESS, SI7021_MEASRH_HOLD_CMD);
+	//return humdity;
+	uint32_t temp = humdity;
+	temp *= 125;
+	humidity = (double)temp/65536;
+	humidity -= 6.0;
 
 	return humidity;
 
@@ -76,182 +84,6 @@ float get_soil_temp() {
 	return temp;
 }
 
-
-
-
-/*
-void Adafruit_Si7021::readSerialNumber(void) {
-  Wire.beginTransmission(_i2caddr);
-
-  i2c_send8((uint8_t)(SI7021_ID1_CMD >> 8));
-  i2c_send8((uint8_t)(SI7021_ID1_CMD & 0xFF));
-
-  Wire.endTransmission();
-
-  bool gotData = false;
-  uint32_t start = millis(); // start timeout
-  while(millis()-start < _TRANSACTION_TIMEOUT) {
-	if (Wire.requestFrom(_i2caddr, 8) == 8) {
-	  gotData = true;
-	  break;
-	}
-	delay(2);
-  }
-  if (!gotData)
-	return; // error timeout
-
-  sernum_a = Wire.read();
-  Wire.read();
-  sernum_a <<= 8;
-  sernum_a |= Wire.read();
-  Wire.read();
-  sernum_a <<= 8;
-  sernum_a |= Wire.read();
-  Wire.read();
-  sernum_a <<= 8;
-  sernum_a |= Wire.read();
-  Wire.read();
-
-  Wire.beginTransmission(_i2caddr);
-  Wire.write((uint8_t)(SI7021_ID2_CMD >> 8));
-  Wire.write((uint8_t)(SI7021_ID2_CMD & 0xFF));
-  Wire.endTransmission();
-
-  gotData = false;
-  start = millis(); // start timeout
-  while(millis()-start < _TRANSACTION_TIMEOUT){
-	if (Wire.requestFrom(_i2caddr, 8) == 8) {
-	  gotData = true;
-	  break;
-	}
-	delay(2);
-  }
-  if (!gotData)
-	return; // error timeout
-
-  sernum_b = Wire.read();
-  Wire.read();
-  sernum_b <<= 8;
-  sernum_b |= Wire.read();
-  Wire.read();
-  sernum_b <<= 8;
-  sernum_b |= Wire.read();
-  Wire.read();
-  sernum_b <<= 8;
-  sernum_b |= Wire.read();
-  Wire.read();
-
-  switch(sernum_b >> 24) {
-	case 0:
-	case 0xff:
-	  _model = SI_Engineering_Samples;
-		break;
-	case 0x0D:
-	  _model = SI_7013;
-	  break;
-	case 0x14:
-	  _model = SI_7020;
-	  break;
-	case 0x15:
-	  _model = SI_7021;
-	  break;
-	default:
-	  _model = SI_UNKNOWN;
-	}
-}*/
-
-
-
-float get_air_temp() {
-	uint16_t t = read16(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_AMBIENT_TEMP);
-
-	float temp = t & 0x0FFF;
-	temp /= 16.0;
-	if (t & 0x1000)
-		temp -= 256;
-
-	return temp;
-
-}
-
-
-
-// Si7021 Functions
-
-/*bool si7021_init(){
-  // reset -- was a separate function in the library
-  Wire.beginTransmission(_i2caddr);
-  Wire.write(SI7021_RESET_CMD);
-  Wire.endTransmission();
-  delay(50);
-
-  if (_readRegister8(SI7021_READRHT_REG_CMD) != 0x3A)
-	return false;
-
-  // Do we need these?
-  readSerialNumber();
-  _readRevision();
-
-  return true;
-
-}*/
-
-/*float get_soil_temp(){
-	Wire.beginTransmission(_i2caddr);
-	Wire.write(SI7021_MEASTEMP_NOHOLD_CMD);
-	uint8_t err = Wire.endTransmission();
-
-	if(err != 0)
-		return NAN; //error
-
-	uint32_t start = millis(); // start timeout
-	while(millis()-start < _TRANSACTION_TIMEOUT) {
-		if (Wire.requestFrom(_i2caddr, 3) == 3) {
-			uint16_t temp = Wire.read() << 8 | Wire.read();
-			uint8_t chxsum = Wire.read();
-
-			float temperature = temp;
-			temperature *= 175.72;
-			temperature /= 65536;
-			temperature -= 46.85;
-			return temperature;
-			}
-		delay(6); // 1/2 typical sample processing time
-	}
-
-	return NAN; // Error timeout
-
-}
-*/
-
-float get_humidity() {
-
-	/*Wire.beginTransmission(_i2caddr);
-
-	Wire.write(SI7021_MEASRH_NOHOLD_CMD);
-	uint8_t err = Wire.endTransmission();
-	if (err != 0)
-		return NAN; //error
-
-	uint32_t start = millis(); // start timeout
-	while(millis()-start < _TRANSACTION_TIMEOUT) {
-		if (Wire.requestFrom(_i2caddr, 3) == 3) {
-			uint16_t hum = Wire.read() << 8 | Wire.read();
-			uint8_t chxsum = Wire.read();
-
-			float humidity = hum;
-			humidity *= 125;
-			humidity /= 65536;
-			humidity -= 6;
-
-			return humidity;
-			}
-		delay(6); // 1/2 typical sample processing time
-		}
-		return NAN; // Error timeout
-		*/
-}
-
 // ALS-PT19 Functions
 float get_light();
 
@@ -259,58 +91,41 @@ float get_light();
 
 uint8_t ccs811_init() {
 	uint8_t temp;
-	uint8_t temp2;
+	
+	// ============ SW RESET =====================
+	
+	UCB2I2CSA = CCS811_ADDRESS;// configure slave address
 
-	UCB2I2CSA = 0xF4;// configure slave address
+	TXByteCtr = 5;
+	TXByteBuffer[4] = CCS811_SW_RESET;
+	TXByteBuffer[3] = 0x11;
+	TXByteBuffer[2] = 0xE5;
+	TXByteBuffer[1] = 0x72;
+	TXByteBuffer[0] = 0x8A;
 
-	TXByteCtr = 0;
 	while (UCB2CTLW0 & UCTXSTP);        // Ensure stop condition got sent
 
 	UCB2CTLW0 |= UCTR | UCTXSTT;        // I2C TX, start condition
 
-	__bis_SR_register(LPM0_bits | GIE); // Enter LPM0 w/ interrupts
-											// Remain in LPM0 until all data
-											// is TX'd
+	__bis_SR_register(LPM0_bits | GIE); 
+	
+	// ============ APP START =====================
+		
+	__delay_cycles(8000000);
+	i2c_send8(CCS811_ADDRESS, CCS811_BOOTLOADER_APP_START);
+	__delay_cycles(1600000);
 
-
-	//i2c_send8(MCP9808_I2CADDR_DEFAULT, MCP9808_REG_DEVICE_ID);
-	//temp = i2c_receive16(MCP9808_I2CADDR_DEFAULT);
-
-	//i2c_send8(CCS811_ADDRESS, CCS811_MEAS_MODE);
-
-	//temp = read8(CCS811_ADDRESS, CCS811_MEAS_MODE);
-
-	/*if (read16(MCP9808_REG_MANUF_ID) != 0x0054)
-		return false;
-	if (read16(MCP9808_REG_DEVICE_ID) != 0x0400)
-		return false;
-
-	write16(MCP9808_REG_CONFIG, 0x0);*/
-
-	// Add code here to set resolution
-	write8(CCS811_ADDRESS, CCS811_MEAS_MODE, 0x10);
-
-	//i2c_send8(CCS811_ADDRESS, CCS811_MEAS_MODE);
-
-
+	// ============ SET MEASURE MODE TO  =====================
+	
+	i2c_send16(CCS811_ADDRESS, 0x0110);
+	
 	return temp;
 }
 
 uint16_t get_co2() {
-	//uint16_t eCO2;
-	//eCO2 = read16((uint8_t) CCS811_ADDRESS, (uint8_t) CCS811_MEAS_MODE);
-	uint8_t co2val;
-	co2val = read8(CCS811_ADDRESS, CCS811_ERROR_ID);
-
-	/*uint16_t temp1;
-	uint16_t temp2;
-	temp1 = co2val & 0x00FF;
-	temp2 = co2val & 0xFF00;
-	temp1 = temp1 << 8;
-	temp2 = temp2 >> 8;
-	*/
-	return co2val;
-	//return temp1 | temp2;
+	uint16_t eCO2;
+	eCO2 = read16(CCS811_ADDRESS, CCS811_ALG_RESULT_DATA);
+	return eCO2;
 }
 
 
@@ -361,6 +176,7 @@ uint16_t read16(uint8_t dev_addr, uint8_t reg_addr) {
 	uint16_t temp;
 
 	i2c_send8(dev_addr, reg_addr);
+	iflag = 0;
 	temp = i2c_receive16(dev_addr);
 
 	return temp;
@@ -398,7 +214,7 @@ bool i2c_send8(uint8_t addr, uint8_t data) {
 
 	UCB2I2CSA = addr;// configure slave address
 
-	TXByteCtr = 1;
+	TXByteCtr = 2;
 	TXByteBuffer[0] = data;
 
 	while (UCB2CTLW0 & UCTXSTP);        // Ensure stop condition got sent
@@ -415,7 +231,7 @@ bool i2c_send16(uint8_t addr, uint16_t data) {
 
 	UCB2I2CSA = addr;// configure slave address
 
-	TXByteCtr = 1;
+	TXByteCtr = 3;
 	TXByteBuffer[0] = data & 0xFF;
 	TXByteBuffer[1] = data >> 8;
 
@@ -447,7 +263,6 @@ uint8_t i2c_receive8(uint8_t addr) {
 }
 
 uint16_t i2c_receive16(uint8_t addr) {
-
 	UCB2I2CSA = addr;// configure slave address
 	RXByteCtr = 2;
 
@@ -455,9 +270,9 @@ uint16_t i2c_receive16(uint8_t addr) {
 	while (UCB2CTL1 & UCTXSTP);         // Ensure stop condition got sent
 
 	UCB2CTLW0 &= ~UCTR;	 		       // I2C RX
-
+	
 	UCB2CTL1 |= UCTXSTT;                // I2C start condition
-
+	while( UCB2STATW & UCSCLLOW );
 	__bis_SR_register(LPM0_bits | GIE); // Enter LPM0 w/ interrupt
 
 // ( ((RXByteBuffer[1] << 8) & 0xFF00) | (RXByteBuffer[0]));
@@ -467,13 +282,13 @@ uint16_t i2c_receive16(uint8_t addr) {
 
 
 void __attribute__((interrupt(EUSCI_B2_VECTOR))) USCI_B2_ISR(void)
-{
+{	//iflag = UCB2IV & USCI_I2C_UCBIT9IFG;
 	switch (UCB2IV & USCI_I2C_UCBIT9IFG)
 	{
 	case USCI_NONE:          break;     // Vector 0: No interrupts
 	case USCI_I2C_UCALIFG:   break;     // Vector 2: ALIFG
 	case USCI_I2C_UCNACKIFG:            // Vector 4: NACKIFG
-		UCB2CTLW0 |= UCTXSTT;           // resend start if NACK
+		UCB2CTL1 |= UCTXSTT;           // resend start if NACK
 		break;
 	case USCI_I2C_UCSTTIFG:  break;     // Vector 6: STTIFG
 	case USCI_I2C_UCSTPIFG:  break;     // Vector 8: STPIFG
@@ -484,25 +299,29 @@ void __attribute__((interrupt(EUSCI_B2_VECTOR))) USCI_B2_ISR(void)
 	case USCI_I2C_UCRXIFG1:  break;     // Vector 18: RXIFG1
 	case USCI_I2C_UCTXIFG1:  break;     // Vector 20: TXIFG1
 	case USCI_I2C_UCRXIFG0: 	    // Vector 22: RXIFG0
-		if (--RXByteCtr)                  // Check RX byte counter
+		iflag += 50;
+		RXByteCtr--;
+		if (RXByteCtr > 0)                  // Check RX byte counter
 		{
 			RXByteBuffer[RXByteCtr] = UCB2RXBUF;             // Get RX data
 		}
 		else
 		{
-			RXByteBuffer[RXByteCtr] = UCB2RXBUF;             // Get RX data
 			UCB2CTLW0 |= UCTXSTP;       // I2C stop condition
-			UCB2IFG &= ~UCRXIFG0;        // Clear USCI_B2 TX int flag
+			UCB2IFG &= ~UCRXIFG0;        // Clear USCI_B2 RX int flag
+			RXByteBuffer[RXByteCtr] = UCB2RXBUF;             // Get RX data
 			__bic_SR_register_on_exit(LPM0_bits); // Exit LPM0
 		}
 		break;
 	case USCI_I2C_UCTXIFG0:             // Vector 24: TXIFG0
-		if (TXByteCtr)                  // Check TX byte counter
+		iflag = 50;
+
+		if (TXByteCtr > 1)                  // Check TX byte counter
 		{
 			TXByteCtr--;                // Decrement TX byte counter
-			UCB2TXBUF = TXByteBuffer[TXByteCtr];  // Load TX buffer
+			UCB2TXBUF = TXByteBuffer[TXByteCtr-1];  // Load TX buffer
 		}
-		else
+		else if (TXByteCtr == 1)
 		{
 			UCB2CTLW0 |= UCTXSTP;       // I2C stop condition
 			UCB2IFG &= ~UCTXIFG0;        // Clear USCI_B2 TX int flag
@@ -510,7 +329,8 @@ void __attribute__((interrupt(EUSCI_B2_VECTOR))) USCI_B2_ISR(void)
 		}
 		break;
 	case USCI_I2C_UCBCNTIFG: break;     // Vector 26: BCNTIFG
-	case USCI_I2C_UCCLTOIFG: break;     // Vector 28: clock low timeout
+	case USCI_I2C_UCCLTOIFG: 
+		break;     // Vector 28: clock low timeout
 	case USCI_I2C_UCBIT9IFG: break;     // Vector 30: 9th bit
 	default: break;
 	}

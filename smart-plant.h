@@ -146,7 +146,7 @@ float get_air_temp();
 
 float si7021_init();
 float get_soil_temp();
-float get_humidity();
+uint16_t get_humidity();
 
 // ALS-PT19 Functions
 
